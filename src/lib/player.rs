@@ -1,5 +1,5 @@
 use librespot::audio::AudioPacket;
-use librespot::connect::spirc::Spirc;
+use librespot::connect::spirc::{Spirc};
 use librespot::core::{
     authentication::Credentials,
     cache::Cache,
@@ -14,7 +14,7 @@ use librespot::playback::{
     mixer::{AudioFilter, Mixer, MixerConfig},
     player::{Player, PlayerEventChannel},
 };
-
+use librespot::protocol::authentication::AuthenticationType;
 use serenity::prelude::TypeMapKey;
 
 use std::clone::Clone;
@@ -25,6 +25,10 @@ use std::sync::{
 };
 
 use byteorder::{ByteOrder, LittleEndian};
+use spotify_oauth::{SpotifyAuth, SpotifyCallback, SpotifyScope};
+use std::str::FromStr;
+use std::sync::atomic::{AtomicUsize, Ordering, AtomicU64};
+use songbird::tracks::TrackCommand::Volume;
 
 pub struct SpotifyPlayer {
     player_config: PlayerConfig,
@@ -50,25 +54,46 @@ impl EmittedSink {
     }
 }
 
-struct ImpliedMixer {}
+pub struct SoftMixer {
+    volume: Arc<AtomicUsize>,
+}
 
-impl Mixer for ImpliedMixer {
-    fn open(_config: Option<MixerConfig>) -> ImpliedMixer {
-        ImpliedMixer {}
+impl Mixer for SoftMixer {
+    fn open(_: Option<MixerConfig>) -> SoftMixer {
+        SoftMixer {
+            volume: Arc::new(AtomicUsize::new(0xFFFF)),
+        }
     }
-
     fn start(&self) {}
-
     fn stop(&self) {}
-
     fn volume(&self) -> u16 {
-        50
+        println!("volume fetched");
+        self.volume.load(Ordering::Relaxed) as u16
     }
-
-    fn set_volume(&self, _volume: u16) {}
-
+    fn set_volume(&self, volume: u16) {
+        println!("volume changed");
+        self.volume.store(volume as usize, Ordering::Relaxed);
+    }
     fn get_audio_filter(&self) -> Option<Box<dyn AudioFilter + Send>> {
-        None
+        Some(Box::new(SoftVolumeApplier {
+            volume: self.volume.clone(),
+        }))
+    }
+}
+
+struct SoftVolumeApplier {
+    volume: Arc<AtomicUsize>,
+}
+
+impl AudioFilter for SoftVolumeApplier {
+    fn modify_stream(&self, data: &mut [f32]) {
+        let volume = self.volume.load(Ordering::Relaxed) as u16;
+        if volume != 0xFFFF {
+            let volume_factor = volume as f64 / 0xFFFF as f64;
+            for x in data.iter_mut() {
+                *x = (*x as f64 * volume_factor) as f32;
+            }
+        }
     }
 }
 
@@ -136,12 +161,26 @@ impl TypeMapKey for SpotifyPlayerKey {
 
 impl SpotifyPlayer {
     pub async fn new(
-        username: String,
-        password: String,
         quality: Bitrate,
         cache_dir: Option<String>,
     ) -> SpotifyPlayer {
-        let credentials = Credentials::with_password(username, password);
+        let auth = SpotifyAuth::new_from_env("code".into(), vec![SpotifyScope::Streaming, SpotifyScope::UserReadPlaybackState, SpotifyScope::UserModifyPlaybackState, SpotifyScope::UserReadCurrentlyPlaying], false);
+        let auth_url = auth.authorize_url().expect("auth url");
+
+        println!("{}", auth_url);
+
+        let mut buffer = String::new();
+        std::io::stdin().read_line(&mut buffer);
+
+        // Convert the given callback URL into a token.
+        let token = SpotifyCallback::from_str(buffer.trim()).unwrap()
+            .convert_into_token(auth.client_id, auth.client_secret, auth.redirect_uri).await.expect("get token");
+
+        let credentials = Credentials {
+            username: "".into(),
+            auth_type: AuthenticationType::AUTHENTICATION_SPOTIFY_TOKEN ,
+            auth_data: token.access_token.into_bytes(),
+        };
 
         let session_config = SessionConfig::default();
 
@@ -149,7 +188,7 @@ impl SpotifyPlayer {
 
         // 4 GB
         let mut cache_limit: u64 = 10;
-        cache_limit = cache_limit.pow(9);
+        cache_limit = cache_limit.pow(10);
         cache_limit *= 4;
 
         if let Ok(c) = Cache::new(cache_dir.clone(), cache_dir, Some(cache_limit)) {
@@ -193,21 +232,21 @@ impl SpotifyPlayer {
 
     pub async fn enable_connect(&mut self) {
         let config = ConnectConfig {
-            name: "Aoede".to_string(),
+            name: "Pog ass bot".to_string(),
             device_type: DeviceType::AudioDongle,
             volume: std::u16::MAX / 2,
             autoplay: true,
             volume_ctrl: VolumeCtrl::default(),
         };
 
-        let mixer = Box::new(ImpliedMixer {});
+        let mixer = Box::new(SoftMixer{ volume: Arc::new(Default::default()) });
 
         let cloned_sink = self.emitted_sink.clone();
 
         let (player, player_events) = Player::new(
             self.player_config.clone(),
             self.session.clone(),
-            None,
+            mixer.get_audio_filter(),
             move || Box::new(cloned_sink),
         );
 

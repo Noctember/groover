@@ -7,6 +7,7 @@ mod lib {
     pub mod player;
     // pub mod forward_mpsc;
 }
+
 use lib::player::{SpotifyPlayer, SpotifyPlayerKey};
 use librespot::core::mercury::MercuryError;
 use librespot::playback::config::Bitrate;
@@ -25,10 +26,14 @@ use serenity::{
     framework::StandardFramework,
     model::{gateway, gateway::Ready, id, user, voice::VoiceState},
 };
+use librespot::playback::mixer::Mixer;
+use std::error::Error;
+use songbird::input::codec::OpusDecoderState;
 
 struct Handler;
 
 pub struct UserIdKey;
+
 impl TypeMapKey for UserIdKey {
     type Value = id::UserId;
 }
@@ -49,7 +54,6 @@ impl EventHandler for Handler {
                 panic!("Not currently in any guilds.");
             }
         };
-
         let data = ctx.data.read().await;
 
         let player = data.get::<SpotifyPlayerKey>().unwrap().clone();
@@ -124,10 +128,11 @@ impl EventHandler for Handler {
                             Some(channel_id) => channel_id,
                             None => {
                                 println!("Could not find user in VC.");
+                                println!("{}", &user_id);
+                                println!("{}", &guild_id);
                                 continue;
                             }
                         };
-
                         let _handler = manager.join(guild_id, channel_id).await;
 
                         if let Some(handler_lock) = manager.get(guild_id) {
@@ -164,7 +169,7 @@ impl EventHandler for Handler {
                                 &player.lock().await.session,
                                 track_id,
                             )
-                            .await;
+                                .await;
 
                         if let Ok(track) = track {
                             let artist: Result<librespot::metadata::Artist, MercuryError> =
@@ -172,7 +177,7 @@ impl EventHandler for Handler {
                                     &player.lock().await.session,
                                     *track.artists.first().unwrap(),
                                 )
-                                .await;
+                                    .await;
 
                             if let Ok(artist) = artist {
                                 let listening_to = format!("{}: {}", artist.name, track.name);
@@ -181,11 +186,15 @@ impl EventHandler for Handler {
                                     Some(gateway::Activity::listening(listening_to)),
                                     user::OnlineStatus::Online,
                                 )
-                                .await;
+                                    .await;
                             }
                         }
                     }
-
+                    PlayerEvent::VolumeSet { volume } => {
+                        let data2 = c.data.read().await;
+                        let player = data2.get::<SpotifyPlayerKey>().unwrap();
+                        // player.lock().await.spirc.as_ref().expect("").pause()
+                    }
                     _ => {}
                 }
             }
@@ -271,10 +280,6 @@ async fn main() {
     let token = env::var("DISCORD_TOKEN").expect("Expected a token in the environment");
 
     let framework = StandardFramework::new();
-    let username =
-        env::var("SPOTIFY_USERNAME").expect("Expected a Spotify username in the environment");
-    let password =
-        env::var("SPOTIFY_PASSWORD").expect("Expected a Spotify password in the environment");
     let user_id =
         env::var("DISCORD_USER_ID").expect("Expected a Discord user ID in the environment");
 
@@ -285,7 +290,7 @@ async fn main() {
     }
 
     let player = Arc::new(Mutex::new(
-        SpotifyPlayer::new(username, password, Bitrate::Bitrate320, cache_dir).await,
+        SpotifyPlayer::new(Bitrate::Bitrate320, cache_dir).await,
     ));
 
     let mut client = Client::builder(&token)
