@@ -1,12 +1,12 @@
 [package]
-name = "aoede"
+name = "groover"
 version = "0.1.0"
-authors = ["Max Isom <hi@maxisom.me>"]
+authors = ["Max Isom <hi@maxisom.me>", "Xavier B. <hello@ncbr.wtf>"]
 edition = "2018"
 
 [dependencies]
 librespot = {version = "0.2.0", default-features = false}
-songbird = "0.1.6"
+songbird = {version = "0.1.6", features = ["driver"]}
 tracing = "0.1"
 tracing-subscriber = "0.2"
 tracing-futures = "0.2"
@@ -15,10 +15,13 @@ futures = "0.3.14"
 byteorder = "1.4.3"
 samplerate = "0.2.4"
 spotify-oauth = "0.3.0"
+async-nats = "0.13.0"
+serde_json = "1.0.81"
+serde = "1.0.81"
 
-[dependencies.serenity]
-version = "0.10"
-features = ["client", "standard_framework", "voice", "rustls_backend"]
+#[dependencies.serenity]
+#version = "0.10"
+#features = ["client", "standard_framework", "voice", "rustls_backend"]
 
 [profile.dev]
 split-debuginfo = "unpacked"

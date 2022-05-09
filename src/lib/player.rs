@@ -15,7 +15,6 @@ use librespot::playback::{
     player::{Player, PlayerEventChannel},
 };
 use librespot::protocol::authentication::AuthenticationType;
-use serenity::prelude::TypeMapKey;
 
 use std::clone::Clone;
 use std::io;
@@ -27,8 +26,7 @@ use std::sync::{
 use byteorder::{ByteOrder, LittleEndian};
 use spotify_oauth::{SpotifyAuth, SpotifyCallback, SpotifyScope};
 use std::str::FromStr;
-use std::sync::atomic::{AtomicUsize, Ordering, AtomicU64};
-use songbird::tracks::TrackCommand::Volume;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 pub struct SpotifyPlayer {
     player_config: PlayerConfig,
@@ -154,11 +152,11 @@ impl Clone for EmittedSink {
     }
 }
 
-pub struct SpotifyPlayerKey;
+/*pub struct SpotifyPlayerKey;
 impl TypeMapKey for SpotifyPlayerKey {
     type Value = Arc<tokio::sync::Mutex<SpotifyPlayer>>;
 }
-
+*/
 impl SpotifyPlayer {
     pub async fn new(
         quality: Bitrate,
@@ -183,14 +181,14 @@ impl SpotifyPlayer {
         };
 
         let session_config = SessionConfig::default();
-
+        //
         let mut cache: Option<Cache> = None;
-
+        //
         // 4 GB
         let mut cache_limit: u64 = 10;
         cache_limit = cache_limit.pow(10);
         cache_limit *= 4;
-
+        //
         if let Ok(c) = Cache::new(cache_dir.clone(), cache_dir, Some(cache_limit)) {
             cache = Some(c);
         }
@@ -198,7 +196,7 @@ impl SpotifyPlayer {
         let session = Session::connect(session_config, credentials, cache)
             .await
             .expect("Error creating session");
-
+        //
         let player_config = PlayerConfig {
             bitrate: quality,
             normalisation: false,
@@ -212,7 +210,7 @@ impl SpotifyPlayer {
             gapless: true,
             passthrough: false,
         };
-
+        //
         let emitted_sink = EmittedSink::new();
 
         let cloned_sink = emitted_sink.clone();

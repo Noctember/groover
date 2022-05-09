@@ -1,41 +1,32 @@
 use std::env;
+use std::sync::Arc;
 
-use songbird::input;
-use songbird::SerenityInit;
+use futures::StreamExt;
+use librespot::playback::config::Bitrate;
+use songbird::{ConnectionInfo};
+use songbird::id::{GuildId, UserId};
+use tokio::sync::Mutex;
+use serde::{Serialize, Deserialize};
+use lib::player::SpotifyPlayer;
+
+use crate::groover::Groover;
+
+mod groover;
 
 mod lib {
     pub mod player;
-    // pub mod forward_mpsc;
 }
 
-use lib::player::{SpotifyPlayer, SpotifyPlayerKey};
-use librespot::core::mercury::MercuryError;
-use librespot::playback::config::Bitrate;
-use librespot::playback::player::PlayerEvent;
-use std::sync::Arc;
-use tokio::sync::Mutex;
-use tokio::time::{sleep, Duration};
+/*pub struct UserIdKey;
 
-use serenity::client::Context;
-
-use serenity::prelude::TypeMapKey;
-
-use serenity::{
-    async_trait,
-    client::{Client, EventHandler},
-    framework::StandardFramework,
-    model::{gateway, gateway::Ready, id, user, voice::VoiceState},
-};
-use librespot::playback::mixer::Mixer;
-use std::error::Error;
-use songbird::input::codec::OpusDecoderState;
-
-struct Handler;
-
-pub struct UserIdKey;
+pub struct GuildIdKey;
 
 impl TypeMapKey for UserIdKey {
     type Value = id::UserId;
+}
+
+impl TypeMapKey for GuildIdKey {
+    type Value = id::GuildId;
 }
 
 #[async_trait]
@@ -270,16 +261,45 @@ impl EventHandler for Handler {
             return;
         }
     }
+}*/
+#[derive(Serialize, Deserialize)]
+#[serde(remote = "UserId")]
+struct UserIdDef(pub u64);
+
+#[derive(Serialize, Deserialize)]
+#[serde(remote = "GuildId")]
+pub struct GuildIdDef(pub u64);
+#[derive(Serialize, Deserialize)]
+#[serde(remote = "ConnectionInfo")]
+struct ConnectionInfoDef {
+    endpoint: String,
+    #[serde(with = "GuildIdDef")]
+    guild_id: GuildId,
+    session_id: String,
+    token: String,
+    #[serde(with = "UserIdDef")]
+    user_id: UserId,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(tag = "type")]
+pub enum OperatorMsg {
+    Join {
+        #[serde(with = "ConnectionInfoDef")]
+        info: ConnectionInfo
+    },
+    PausePlay,
+
 }
 
 #[tokio::main]
 async fn main() {
-    tracing_subscriber::fmt::init();
-
     // Configure the client with your Discord bot token in the environment.
     let token = env::var("DISCORD_TOKEN").expect("Expected a token in the environment");
 
-    let framework = StandardFramework::new();
+    let guild_id =
+        env::var("DISCORD_GUILD_ID").expect("Expected a Discord guild ID in the environment");
+
     let user_id =
         env::var("DISCORD_USER_ID").expect("Expected a Discord user ID in the environment");
 
@@ -289,21 +309,32 @@ async fn main() {
         cache_dir = Some(c);
     }
 
-    let player = Arc::new(Mutex::new(
-        SpotifyPlayer::new(Bitrate::Bitrate320, cache_dir).await,
-    ));
+    // let player = Arc::new(Mutex::new(
+    // ));
+    SpotifyPlayer::new(Bitrate::Bitrate320, cache_dir).await;
 
-    let mut client = Client::builder(&token)
-        .event_handler(Handler)
-        .framework(framework)
-        .type_map_insert::<SpotifyPlayerKey>(player)
-        .type_map_insert::<UserIdKey>(id::UserId::from(user_id.parse::<u64>().unwrap()))
-        .register_songbird()
-        .await
-        .expect("Err creating client");
 
-    let _ = client
-        .start()
-        .await
-        .map_err(|why| println!("Client ended: {:?}", why));
+    let nats_url = env::var("NATS_URL").expect("Expected a NATS URL in the environment");
+
+    let mut  nc = async_nats::connect(nats_url).await.unwrap();
+
+    let mut driver = Groover::new();
+
+    let mut sub = nc.subscribe(guild_id).await.unwrap();
+
+    tokio::spawn(async move {
+        loop {
+            while let Some(msg) = sub.next().await {
+                let omsg: OperatorMsg = serde_json::from_slice(&msg.payload).unwrap();
+                match omsg {
+                    OperatorMsg::PausePlay => {
+                        // player.lock().await.spirc.as_ref().unwrap().play_pause();
+                    }
+                    OperatorMsg::Join { info } => {
+                        driver.connect(info);
+                    }
+                }
+            }
+        }
+    });
 }
