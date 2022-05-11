@@ -1,7 +1,9 @@
 use songbird::{ConnectionInfo, Driver};
+use songbird::input::Input;
 
+#[derive(Clone)]
 pub struct Groover {
-    driver: Driver,
+    pub driver: Driver,
     is_connected: bool,
 }
 
@@ -25,5 +27,10 @@ impl Groover {
         if self.is_connected {
             self.driver.leave()
         }
+    }
+
+    pub fn set_source(&mut self, source: Input) {
+        self.driver.play_source(source);
+        self.driver.set_bitrate(songbird::Bitrate::Auto);
     }
 }

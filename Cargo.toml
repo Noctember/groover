@@ -18,7 +18,7 @@ spotify-oauth = "0.3.0"
 async-nats = "0.13.0"
 serde_json = "1.0.81"
 serde = "1.0.81"
-
+async-ctrlc = "1.2.0"
 #[dependencies.serenity]
 #version = "0.10"
 #features = ["client", "standard_framework", "voice", "rustls_backend"]
