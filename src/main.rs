@@ -6,6 +6,7 @@ use async_ctrlc;
 use async_ctrlc::CtrlC;
 use futures::sink::Buffer;
 use futures::StreamExt;
+use librespot::core::mercury::MercuryError;
 use librespot::playback::config::Bitrate;
 use librespot::playback::player::PlayerEvent;
 use serde::{Deserialize, Serialize};
@@ -297,7 +298,8 @@ pub enum OperatorMsg {
         #[serde(with = "ConnectionInfoDef")]
         info: ConnectionInfo
     },
-    PausePlay,
+    PausePlay {
+    },
 }
 
 #[tokio::main]
@@ -322,13 +324,12 @@ async fn main() {
 
     let mut nc = async_nats::connect(nats_url).await.unwrap();
 
-    let mut driver = Groover::new();
+    let mut driver =  Arc::new(Mutex::new(Groover::new()));
 
     let mut sub = nc.subscribe(guild_id.clone()).await.unwrap();
 
     let player_clone = player.clone();
     let mut driver_clone = driver.clone();
-
     tokio::spawn(async move {
         loop {
             let channel = player_clone.lock().await.event_channel.clone().unwrap();
@@ -357,10 +358,11 @@ async fn main() {
                         input::Container::Raw,
                         None,
                     );
-                    driver_clone.set_source(source);
+                    driver_clone.lock().await.set_source(source);
                 }
                 PlayerEvent::Paused { .. } => {}
-                PlayerEvent::Playing { track_id, .. } => {}
+                PlayerEvent::Playing { track_id, .. } => {
+                }
                 PlayerEvent::VolumeSet { volume } => {
                     // let data2 = c.data.read().await;
                     // let player = data2.get::<SpotifyPlayerKey>().unwrap();
@@ -377,11 +379,11 @@ async fn main() {
         while let Some(msg) = sub.next().await {
             let omsg: OperatorMsg = serde_json::from_slice(&msg.payload).unwrap();
             match omsg {
-                OperatorMsg::PausePlay => {
+                OperatorMsg::PausePlay{} => {
                     player.lock().await.spirc.as_ref().unwrap().play_pause();
                 }
                 OperatorMsg::Join { info } => {
-                    driver.connect(info);
+                    driver.lock().await.connect(info);
                     player.lock().await.enable_connect().await;
                     println!("Connected");
                 }
