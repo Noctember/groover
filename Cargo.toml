@@ -5,8 +5,8 @@ authors = ["Max Isom <hi@maxisom.me>", "Xavier B. <hello@ncbr.wtf>"]
 edition = "2018"
 
 [dependencies]
-librespot = {version = "0.2.0", default-features = false}
-songbird = {version = "0.1.4", features = ["driver-core"]}
+librespot = { version = "0.2.0", default-features = false }
+songbird = { version = "0.1.4", features = ["driver-core"] }
 tracing = "0.1"
 tracing-subscriber = "0.2"
 tracing-futures = "0.2"

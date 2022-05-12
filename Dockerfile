@@ -1,6 +1,6 @@
 FROM rust:alpine as dependencies
 
-RUN apk add --no-cache alpine-sdk cmake automake autoconf opus libtool
+RUN apk add --no-cache alpine-sdk cmake automake autoconf opus libtool openssl-dev
 RUN cargo install cargo-chef
 
 FROM dependencies as planner
