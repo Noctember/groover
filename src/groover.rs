@@ -1,36 +1,40 @@
-use songbird::{ConnectionInfo, Driver};
+use songbird::{Call, ConnectionInfo, Driver};
+use songbird::id::{GuildId, UserId};
 use songbird::input::Input;
 
 #[derive(Clone)]
 pub struct Groover {
-    pub driver: Driver,
+    call: Call,
     is_connected: bool,
+    pub is_source_set: bool,
 }
 
 impl Groover {
-    pub fn new() -> Groover {
-        Groover{
-            driver: Driver::new(Default::default()),
+    pub fn new(guild_id: String, user_id: String) -> Groover {
+        Groover {
+            call : Call::standalone(GuildId::from(guild_id.clone().parse::<u64>().unwrap()), UserId::from(user_id.clone().parse::<u64>().unwrap())),
             is_connected: false,
+            is_source_set: false,
         }
     }
 
-    pub fn connect(&mut self, info: ConnectionInfo) {
+    pub async fn connect(&mut self, info: ConnectionInfo) {
         if self.is_connected {
-            self.disconnect()
+            self.disconnect().await;
         }
-        self.driver.connect(info);
+        self.call.connect(info).await;
         self.is_connected = true;
     }
 
-    pub fn disconnect(&mut self) {
+    pub async fn disconnect(&mut self) {
         if self.is_connected {
-            self.driver.leave()
+            self.call.leave().await;
         }
     }
 
     pub fn set_source(&mut self, source: Input) {
-        self.driver.play_source(source);
-        self.driver.set_bitrate(songbird::Bitrate::Auto);
+        self.call.play_source(source);
+        self.call.set_bitrate(songbird::Bitrate::Auto);
+        self.is_source_set = true;
     }
 }

@@ -1,5 +1,16 @@
+use std::{env, io};
+use std::clone::Clone;
+use std::env::VarError;
+use std::str::FromStr;
+use std::sync::{
+    Arc,
+    mpsc::{Receiver, sync_channel, SyncSender}, Mutex,
+};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+
+use byteorder::{ByteOrder, LittleEndian};
 use librespot::audio::AudioPacket;
-use librespot::connect::spirc::{Spirc};
+use librespot::connect::spirc::Spirc;
 use librespot::core::{
     authentication::Credentials,
     cache::Cache,
@@ -8,25 +19,15 @@ use librespot::core::{
 };
 use librespot::playback::{
     audio_backend,
+    config::{NormalisationMethod, NormalisationType},
     config::Bitrate,
     config::PlayerConfig,
-    config::{NormalisationMethod, NormalisationType},
     mixer::{AudioFilter, Mixer, MixerConfig},
     player::{Player, PlayerEventChannel},
 };
 use librespot::protocol::authentication::AuthenticationType;
-
-use std::clone::Clone;
-use std::io;
-use std::sync::{
-    mpsc::{sync_channel, Receiver, SyncSender},
-    Arc, Mutex,
-};
-
-use byteorder::{ByteOrder, LittleEndian};
+use songbird::tracks::TrackCommand::Volume;
 use spotify_oauth::{SpotifyAuth, SpotifyCallback, SpotifyScope};
-use std::str::FromStr;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 pub struct SpotifyPlayer {
     player_config: PlayerConfig,
@@ -112,7 +113,7 @@ impl audio_backend::Sink for EmittedSink {
             samplerate::ConverterType::Linear,
             packet.samples(),
         )
-        .unwrap();
+            .unwrap();
 
         let sender = self.sender.clone();
 
@@ -162,33 +163,40 @@ impl SpotifyPlayer {
         quality: Bitrate,
         cache_dir: Option<String>,
     ) -> SpotifyPlayer {
-        let auth = SpotifyAuth::new_from_env("code".into(), vec![SpotifyScope::Streaming, SpotifyScope::UserReadPlaybackState, SpotifyScope::UserModifyPlaybackState, SpotifyScope::UserReadCurrentlyPlaying], false);
-        let auth_url = auth.authorize_url().expect("auth url");
+        let tok = match env::var("TOKEN") {
+            Ok(token) => {
+                token
+            }
+            Err(_) => {
+                let auth = SpotifyAuth::new_from_env("code".into(), vec![SpotifyScope::Streaming, SpotifyScope::UserReadPlaybackState, SpotifyScope::UserModifyPlaybackState, SpotifyScope::UserReadCurrentlyPlaying], false);
+                let auth_url = auth.authorize_url().expect("auth url");
 
-        println!("{}", auth_url);
+                println!("{}", auth_url);
 
-        let mut buffer = String::new();
-        std::io::stdin().read_line(&mut buffer);
+                let mut buffer = String::new();
+                std::io::stdin().read_line(&mut buffer);
 
-        // Convert the given callback URL into a token.
-        let token = SpotifyCallback::from_str(buffer.trim()).unwrap()
-            .convert_into_token(auth.client_id, auth.client_secret, auth.redirect_uri).await.expect("get token");
-
+                // Convert the given callback URL into a token.
+                let token = SpotifyCallback::from_str(buffer.trim()).unwrap()
+                    .convert_into_token(auth.client_id, auth.client_secret, auth.redirect_uri).await.expect("get token");
+                token.access_token
+            }
+        };
         let credentials = Credentials {
             username: "".into(),
-            auth_type: AuthenticationType::AUTHENTICATION_SPOTIFY_TOKEN ,
-            auth_data: token.access_token.into_bytes(),
+            auth_type: AuthenticationType::AUTHENTICATION_SPOTIFY_TOKEN,
+            auth_data: tok.into_bytes(),
         };
 
         let session_config = SessionConfig::default();
-        //
+
         let mut cache: Option<Cache> = None;
-        //
+
         // 4 GB
         let mut cache_limit: u64 = 10;
         cache_limit = cache_limit.pow(10);
         cache_limit *= 4;
-        //
+
         if let Ok(c) = Cache::new(cache_dir.clone(), cache_dir, Some(cache_limit)) {
             cache = Some(c);
         }
@@ -196,7 +204,7 @@ impl SpotifyPlayer {
         let session = Session::connect(session_config, credentials, cache)
             .await
             .expect("Error creating session");
-        //
+
         let player_config = PlayerConfig {
             bitrate: quality,
             normalisation: false,
@@ -210,7 +218,7 @@ impl SpotifyPlayer {
             gapless: true,
             passthrough: false,
         };
-        //
+
         let emitted_sink = EmittedSink::new();
 
         let cloned_sink = emitted_sink.clone();
@@ -237,7 +245,7 @@ impl SpotifyPlayer {
             volume_ctrl: VolumeCtrl::default(),
         };
 
-        let mixer = Box::new(SoftMixer{ volume: Arc::new(Default::default()) });
+        let mixer = Box::new(SoftMixer { volume: Arc::new(Default::default()) });
 
         let cloned_sink = self.emitted_sink.clone();
 

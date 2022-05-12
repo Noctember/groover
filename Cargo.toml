@@ -6,7 +6,7 @@ edition = "2018"
 
 [dependencies]
 librespot = {version = "0.2.0", default-features = false}
-songbird = {version = "0.1.6", features = ["driver"]}
+songbird = {version = "0.1.4", features = ["driver-core"]}
 tracing = "0.1"
 tracing-subscriber = "0.2"
 tracing-futures = "0.2"

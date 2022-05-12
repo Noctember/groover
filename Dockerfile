@@ -24,12 +24,12 @@ COPY . .
 # Copy over the cached dependencies
 COPY --from=cacher /app/target target
 COPY --from=cacher /usr/local/cargo /usr/local/cargo
-RUN cargo build --release --bin aoede
+RUN cargo build --release --bin groover
 
 FROM alpine as runtime
 WORKDIR app
-COPY --from=builder /app/target/release/aoede /usr/local/bin
+COPY --from=builder /app/target/release/groover /usr/local/bin
 
 ENV CACHE_DIR=/data
 
-ENTRYPOINT ["/usr/local/bin/aoede"]
+ENTRYPOINT ["/usr/local/bin/groover"]
